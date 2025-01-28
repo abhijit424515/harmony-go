@@ -53,7 +53,9 @@ require (
 )
 
 require (
+	firebase.google.com/go v3.13.0+incompatible
 	github.com/gen2brain/beeep v0.0.0-20240516210008-9c006672e7f4
+	github.com/joho/godotenv v1.5.1
 	github.com/martinlindhe/notify v0.0.0-20181008203735-20632c9a275a
 	golang.org/x/exp v0.0.0-20190731235908-ec7cb31e5a56 // indirect
 	golang.org/x/image v0.6.0 // indirect

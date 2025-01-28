@@ -3,6 +3,7 @@ package clip
 import (
 	"context"
 	"fmt"
+	"harmony/common"
 	"harmony/notify"
 	"sync"
 
@@ -36,7 +37,7 @@ func WatchImage(ctx context.Context, wg *sync.WaitGroup) {
 
 func Watch() {
 	wg := sync.WaitGroup{}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(common.Ctx)
 	defer cancel()
 
 	wg.Add(2)

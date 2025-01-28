@@ -1,25 +1,32 @@
 package main
 
 import (
-	"context"
 	"harmony/clip"
+	"harmony/db"
+	"log"
+	"os"
 
-	firebase "firebase.google.com/go/v4"
+	"github.com/joho/godotenv"
 )
 
-func setup() *firebase.App {
-	clip.SetupClipboard()
-
-	app, err := firebase.NewApp(context.Background(), nil)
+func checkEnv() {
+	err := godotenv.Load()
 	if err != nil {
-		println("[error] initializing app: %v\n", err)
+		log.Fatalf("Error loading .env file: %v", err)
 	}
 
-	return app
+	l := []string{"DB_URL", "FIREBASE_CONFIG"}
+
+	for _, v := range l {
+		if os.Getenv(v) == "" {
+			log.Fatalf("%s env var not set", v)
+		}
+	}
 }
 
 func main() {
-	setup()
+	checkEnv()
+	db.Setup()
 
 	c := make(chan int)
 	go func() {
