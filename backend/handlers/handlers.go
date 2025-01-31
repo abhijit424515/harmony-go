@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"harmony/backend/common"
 	"time"
 
@@ -77,7 +76,7 @@ func UpsertBuffer(userid string, data []byte, t BufType) error {
 	return nil
 }
 
-func CreateUser(email string) error {
+func CreateOrGetUser(email string) (string, error) {
 	items, err := common.Dbc.Query(common.Ctx, &dynamodb.QueryInput{
 		TableName:              aws.String("user"),
 		IndexName:              aws.String("email-index"),
@@ -87,28 +86,28 @@ func CreateUser(email string) error {
 		},
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if items.Count > 0 {
-		fmt.Println("[error] Email already in use")
-		return nil
+		return items.Items[0]["_id"].(*types.AttributeValueMemberS).Value, nil
 	}
 
+	uid := uuid.New().String()
 	item, err := attributevalue.MarshalMap(User{
-		Id:    uuid.New().String(),
+		Id:    uid,
 		Email: email,
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	_, err = common.Dbc.PutItem(common.Ctx, &dynamodb.PutItemInput{
 		TableName: aws.String("user"), Item: item, ConditionExpression: aws.String("attribute_not_exists(email)"),
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
+	return uid, nil
 }

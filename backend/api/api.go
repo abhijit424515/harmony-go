@@ -17,6 +17,17 @@ func Setup() {
 		c.String(http.StatusOK, "Welcome to Harmony!")
 	})
 
+	r.GET("/user", func(c *gin.Context) {
+		e := c.Query("email")
+		uid, err := handlers.CreateOrGetUser(e)
+		if err != nil {
+			c.String(http.StatusInternalServerError, "[error] creating user")
+			return
+		}
+
+		c.String(http.StatusOK, uid)
+	})
+
 	r.POST("/clip/text", func(c *gin.Context) {
 		if c.GetHeader("Content-Type") != "text/plain" {
 			c.String(http.StatusBadRequest, "invalid content type")

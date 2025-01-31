@@ -16,7 +16,7 @@ import (
 func createTableIfNotExists(ctx context.Context, client *dynamodb.Client, tableName string, keySchema []types.KeySchemaElement, attributes []types.AttributeDefinition, gsi []types.GlobalSecondaryIndex) error {
 	_, err := client.DescribeTable(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(tableName)})
 	if err == nil {
-		fmt.Printf("Table %s already exists, skipping creation.\n", tableName)
+		log.Printf("Table %s already exists, skipping creation.\n", tableName)
 		return nil
 	}
 
@@ -37,7 +37,7 @@ func createTableIfNotExists(ctx context.Context, client *dynamodb.Client, tableN
 		return fmt.Errorf("[error] failed to create table %s: %w", tableName, err)
 	}
 
-	fmt.Printf("Table %s created successfully.\n", tableName)
+	log.Printf("Table %s created successfully.\n", tableName)
 	return nil
 }
 

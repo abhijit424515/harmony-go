@@ -4,22 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"harmony/client/common"
 	"harmony/client/notify"
 	"net/http"
 	"sync"
 
 	"golang.design/x/clipboard"
 )
-
-func SetupClipboard() {
-	err := clipboard.Init()
-	if err != nil {
-		panic(err)
-	}
-}
-
-const HOST = "http://localhost:6553"
-const USERID = "fa3c07ea-7d10-46d6-8efc-6abc056f2139"
 
 type BufType string
 
@@ -29,7 +20,7 @@ const (
 )
 
 func sendData(userid string, data []byte, t BufType) error {
-	url := HOST + "/clip/" + string(t) + "?user_id=" + userid
+	url := common.Host + "/clip/" + string(t) + "?user_id=" + userid
 
 	var ct string
 	if t == ImageType {
@@ -47,11 +38,19 @@ func sendData(userid string, data []byte, t BufType) error {
 	return nil
 }
 
+func CopyToClipboard(data []byte, t BufType) {
+	if t == TextType {
+		clipboard.Write(clipboard.FmtText, data)
+	} else {
+		clipboard.Write(clipboard.FmtImage, data)
+	}
+}
+
 func WatchText(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	ch := clipboard.Watch(ctx, clipboard.FmtText)
 	for data := range ch {
-		err := sendData(USERID, data, TextType)
+		err := sendData(common.UserId, data, TextType)
 		if err != nil {
 			fmt.Println("[error]", err)
 			continue
@@ -66,7 +65,7 @@ func WatchImage(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	ch := clipboard.Watch(ctx, clipboard.FmtImage)
 	for data := range ch {
-		err := sendData(USERID, data, ImageType)
+		err := sendData(common.UserId, data, ImageType)
 		if err != nil {
 			fmt.Println("[error]", err)
 			continue
@@ -79,7 +78,7 @@ func WatchImage(ctx context.Context, wg *sync.WaitGroup) {
 
 func Watch() {
 	wg := sync.WaitGroup{}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(common.Ctx)
 	defer cancel()
 
 	wg.Add(2)

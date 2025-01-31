@@ -29,11 +29,5 @@ func main() {
 	checkEnv()
 
 	db.Setup()
-
-	// err := handlers.CreateUser("aak.iitb@gmail.com")
-	// if err != nil {
-	// 	log.Fatalf("[error] creating user: %v", err)
-	// }
-
 	api.Setup()
 }

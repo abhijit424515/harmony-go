@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"harmony/client/clip"
+	"harmony/client/common"
 	"io"
 	"log"
 	"net/http"
+	"slices"
 	"sort"
 	"time"
 )
@@ -24,13 +27,7 @@ type DeviceAuthResponse struct {
 	UserCode        string `json:"user_code"`
 	VerificationURI string `json:"verification_uri"`
 	ExpiresIn       int    `json:"expires_in"`
-	Interval        int    `json:"interval,omitempty"`
-}
-
-type TokenResponse struct {
-	AccessToken string `json:"access_token"`
-	TokenType   string `json:"token_type"`
-	Scope       string `json:"scope"`
+	Interval        int    `json:"interval"`
 }
 
 type Email struct {
@@ -41,8 +38,17 @@ type Email struct {
 }
 
 func requestDeviceCode() (*DeviceAuthResponse, error) {
-	data := fmt.Sprintf("client_id=%s&scope=repo", clientID)
-	resp, err := http.Post(deviceAuthURL, "application/x-www-form-urlencoded", bytes.NewBufferString(data))
+	data := fmt.Sprintf("client_id=%s&scope=user", clientID)
+	req, err := http.NewRequest("POST", deviceAuthURL, bytes.NewBufferString(data))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -55,57 +61,65 @@ func requestDeviceCode() (*DeviceAuthResponse, error) {
 	return &deviceResp, nil
 }
 
-func pollForToken(deviceCode string) (*TokenResponse, error) {
+func pollForToken(deviceCode string) (string, error) {
 	for {
 		data := fmt.Sprintf("client_id=%s&device_code=%s&grant_type=urn:ietf:params:oauth:grant-type:device_code",
 			clientID, deviceCode)
-		resp, err := http.Post(tokenURL, "application/x-www-form-urlencoded", bytes.NewBufferString(data))
+		req, err := http.NewRequest("POST", tokenURL, bytes.NewBufferString(data))
 		if err != nil {
-			return nil, err
+			return "", err
+		}
+
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			return "", err
 		}
 		defer resp.Body.Close()
 
-		body, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode == http.StatusOK {
-			var tokenResp TokenResponse
-			if err := json.Unmarshal(body, &tokenResp); err != nil {
-				return nil, err
-			}
-			return &tokenResp, nil
+		var tokenResp map[string]interface{}
+		err = json.NewDecoder(resp.Body).Decode(&tokenResp)
+		if err != nil {
+			return "", err
 		}
 
-		var respData map[string]interface{}
-		json.Unmarshal(body, &respData)
-		if errorCode, exists := respData["error"]; exists {
-			if errorCode == "authorization_pending" {
+		if _, exists := tokenResp["error"]; exists {
+			codes := []string{"authorization_pending", "slow_down"}
+			if slices.Contains(codes, tokenResp["error"].(string)) {
 				time.Sleep(pollInterval)
 				continue
-			} else { // to be dealt with later
-				return nil, fmt.Errorf("error: %v", respData)
+			} else {
+				return "", fmt.Errorf("[error] %v", tokenResp)
 			}
 		}
+
+		return tokenResp["access_token"].(string), nil
 	}
 }
 
 func getAccessToken() (string, error) {
 	deviceResp, err := requestDeviceCode()
 	if err != nil {
-		log.Fatal("Failed to request device code:", err)
+		log.Println("Failed to request device code:", err)
 		return "", err
 	}
 
-	fmt.Printf("Visit: %s\nEnter this code: %s\n", deviceResp.VerificationURI, deviceResp.UserCode)
+	clip.CopyToClipboard([]byte(deviceResp.UserCode), clip.TextType)
+	fmt.Printf("Visit: %s\nEnter this code: %s\n[Code has been copied to clipboard ✅]\n", deviceResp.VerificationURI, deviceResp.UserCode)
 
-	tokenResp, err := pollForToken(deviceResp.DeviceCode)
+	token, err := pollForToken(deviceResp.DeviceCode)
 	if err != nil {
 		log.Fatal("Failed to retrieve access token:", err)
 		return "", err
 	}
 
-	return tokenResp.AccessToken, nil
+	return token, nil
 }
 
-func getEmail() (string, error) {
+func GetEmail() (string, error) {
 	token, err := getAccessToken()
 	if err != nil {
 		return "", err
@@ -140,4 +154,24 @@ func getEmail() (string, error) {
 	})
 
 	return emails[0].Email, nil
+}
+
+func SetUserId() error {
+	email, err := GetEmail()
+	if err != nil {
+		return err
+	}
+
+	res, err := http.Get(common.Host + "/user?email=" + email)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	body, _ := io.ReadAll(res.Body)
+	common.UserId = string(body)
+
+	log.Printf("User ID: %s\n", common.UserId)
+
+	return nil
 }
