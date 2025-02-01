@@ -48,6 +48,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.39.6
 	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
 	github.com/gin-gonic/gin v1.10.0
+	github.com/golang-jwt/jwt/v4 v4.5.1
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	golang.org/x/crypto v0.32.0 // indirect

@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"harmony/client/clip"
 	"harmony/client/common"
-	"io"
 	"log"
 	"net/http"
+	"net/url"
+	"os"
 	"slices"
 	"sort"
 	"time"
@@ -47,8 +48,7 @@ func requestDeviceCode() (*DeviceAuthResponse, error) {
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := common.Client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -73,8 +73,7 @@ func pollForToken(deviceCode string) (string, error) {
 		req.Header.Set("Accept", "application/json")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-		client := &http.Client{}
-		resp, err := client.Do(req)
+		resp, err := common.Client.Do(req)
 		if err != nil {
 			return "", err
 		}
@@ -133,8 +132,7 @@ func GetEmail() (string, error) {
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := common.Client.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -156,22 +154,66 @@ func GetEmail() (string, error) {
 	return emails[0].Email, nil
 }
 
-func SetUserId() error {
-	email, err := GetEmail()
+func SignIn() error {
+	// email, err := GetEmail()
+	// if err != nil {
+	// 	return err
+	// }
+	email := "210050002@iitb.ac.in"
+
+	req, err := http.NewRequest("GET", common.Host+"/user?email="+email, nil)
 	if err != nil {
 		return err
 	}
 
-	res, err := http.Get(common.Host + "/user?email=" + email)
+	res, err := common.Client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer res.Body.Close()
 
-	body, _ := io.ReadAll(res.Body)
-	common.UserId = string(body)
+	return nil
+}
 
-	log.Printf("User ID: %s\n", common.UserId)
+func SaveCookies() error {
+	file, err := os.Create("cookies.json")
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	url, _ := url.Parse(common.Host)
+	cookies := common.Client.Jar.Cookies(url)
+	encoder := json.NewEncoder(file)
+	if err := encoder.Encode(cookies); err != nil {
+		return err
+	}
 
 	return nil
+}
+
+func CreateOrRestoreCookies() (bool, error) {
+	file, err := os.Open("cookies.json")
+	if err != nil {
+		file, err = os.Create("cookies.json")
+		if err != nil {
+			return false, err
+		}
+		defer file.Close()
+		return false, err
+	}
+	defer file.Close()
+
+	var cookies []*http.Cookie
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(&cookies); err != nil {
+		return true, err
+	}
+
+	url, _ := url.Parse(common.Host)
+	for _, cookie := range cookies {
+		common.Client.Jar.SetCookies(url, []*http.Cookie{cookie})
+	}
+
+	return true, nil
 }

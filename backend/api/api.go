@@ -1,14 +1,40 @@
 package api
 
 import (
+	"fmt"
 	"harmony/backend/handlers"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
+
+func AuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token, err := c.Cookie("access_token")
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, nil)
+			return
+		}
+
+		claims, err := handlers.VerifyAndDecodeToken(token)
+		if err != nil {
+			log.Println("]] HI 2" + err.Error())
+			c.AbortWithStatusJSON(http.StatusUnauthorized, nil)
+			return
+		}
+
+		uid, _ := claims["user_id"].(string)
+		email, _ := claims["email"].(string)
+
+		c.Set("user_id", uid)
+		c.Set("email", email)
+		c.Next()
+	}
+}
 
 func Setup() {
 	r := gin.Default()
@@ -21,24 +47,52 @@ func Setup() {
 		e := c.Query("email")
 		uid, err := handlers.CreateOrGetUser(e)
 		if err != nil {
+			log.Println("[error]", err)
 			c.String(http.StatusInternalServerError, "[error] creating user")
 			return
 		}
 
-		c.String(http.StatusOK, uid)
+		payload := make(map[string]interface{})
+		payload["email"] = e
+		payload["user_id"] = uid
+
+		token, err := handlers.GenerateAccessToken(payload, time.Hour*24)
+		if err != nil {
+			log.Println("[error]", err)
+			c.String(http.StatusInternalServerError, "[error] generating token")
+			return
+		}
+
+		c.SetCookie("access_token", token, 24*int(time.Hour.Seconds()), "/", "", false, true)
+		c.String(http.StatusOK, "")
 	})
 
-	r.POST("/clip/text", func(c *gin.Context) {
+	r.Use(AuthMiddleware()).GET("/test", func(c *gin.Context) {
+		z, _ := c.Get("email")
+		email := z.(string)
+		z, _ = c.Get("user_id")
+		uid := z.(string)
+
+		msg := fmt.Sprintf("You are authorized! Email: %s, User ID: %s", email, uid)
+		c.String(http.StatusOK, msg)
+	})
+
+	r.Use(AuthMiddleware()).POST("/clip/text", func(c *gin.Context) {
 		if c.GetHeader("Content-Type") != "text/plain" {
 			c.String(http.StatusBadRequest, "invalid content type")
 			return
 		}
 
-		user_id := c.Query("user_id")
+		z, exists := c.Get("user_id")
+		if !exists {
+			c.String(http.StatusInternalServerError, "[error] getting user_id")
+			return
+		}
+		user_id := z.(string)
 
 		data, err := io.ReadAll(c.Request.Body)
 		if err != nil {
-			c.String(http.StatusInternalServerError, "error reading body")
+			c.String(http.StatusInternalServerError, "[error] reading body")
 			return
 		}
 
@@ -50,17 +104,22 @@ func Setup() {
 		c.String(http.StatusOK, "")
 	})
 
-	r.POST("/clip/image", func(c *gin.Context) {
+	r.Use(AuthMiddleware()).POST("/clip/image", func(c *gin.Context) {
 		if c.GetHeader("Content-Type") != "application/octet-stream" {
 			c.String(http.StatusBadRequest, "invalid content type")
 			return
 		}
 
-		user_id := c.Query("user_id")
+		z, exists := c.Get("user_id")
+		if !exists {
+			c.String(http.StatusInternalServerError, "[error] getting user_id")
+			return
+		}
+		user_id := z.(string)
 
 		buf, err := io.ReadAll(c.Request.Body)
 		if err != nil {
-			c.String(http.StatusInternalServerError, "error reading body")
+			c.String(http.StatusInternalServerError, "[error] reading body")
 			return
 		}
 

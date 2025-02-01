@@ -17,7 +17,7 @@ func checkEnv() {
 		log.Fatalf("Error loading .env file: %v", err)
 	}
 
-	for _, v := range []string{"PORT"} {
+	for _, v := range []string{"PORT", "JWT_SK"} {
 		if os.Getenv(v) == "" {
 			log.Fatalf("[error] %s env var not set", v)
 		}

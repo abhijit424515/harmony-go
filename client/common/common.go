@@ -2,10 +2,11 @@ package common
 
 import (
 	"context"
+	"net/http"
 )
 
 var (
 	Ctx    context.Context
-	UserId string
+	Client *http.Client
 	Host   string
 )

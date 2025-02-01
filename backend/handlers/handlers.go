@@ -1,13 +1,17 @@
 package handlers
 
 import (
+	"encoding/base64"
+	"fmt"
 	"harmony/backend/common"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 )
 
@@ -110,4 +114,60 @@ func CreateOrGetUser(email string) (string, error) {
 	}
 
 	return uid, nil
+}
+
+func GenerateAccessToken(payload map[string]interface{}, expirationTime time.Duration) (string, error) {
+	token := jwt.New(jwt.SigningMethodHS256)
+
+	claims := token.Claims.(jwt.MapClaims)
+	for key, value := range payload {
+		claims[key] = value
+	}
+
+	t := time.Now()
+	claims["exp"] = t.Add(expirationTime).Unix()
+	claims["iat"] = t.Unix()
+
+	decodedKey, err := base64.StdEncoding.DecodeString(os.Getenv("JWT_SK"))
+	if err != nil {
+		return "", fmt.Errorf("[error] decoding signing key: %v", err)
+	}
+
+	tokenString, err := token.SignedString(decodedKey)
+	if err != nil {
+		return "", err
+	}
+
+	return tokenString, nil
+}
+
+func VerifyAndDecodeToken(tokenString string) (map[string]interface{}, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+
+		decodedKey, err := base64.StdEncoding.DecodeString(os.Getenv("JWT_SK"))
+		if err != nil {
+			return "", fmt.Errorf("[error] decoding signing key: %v", err)
+		}
+		return decodedKey, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		if exp, ok := claims["exp"].(float64); ok {
+			if int64(exp) < time.Now().Unix() {
+				return nil, fmt.Errorf("token has expired")
+			}
+		} else {
+			return nil, fmt.Errorf("missing expiration claim")
+		}
+
+		return claims, nil
+	}
+
+	return nil, fmt.Errorf("invalid token")
 }

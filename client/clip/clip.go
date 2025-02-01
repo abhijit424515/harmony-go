@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"harmony/client/common"
 	"harmony/client/notify"
+	"log"
 	"net/http"
 	"sync"
 
@@ -19,8 +20,8 @@ const (
 	ImageType BufType = "image"
 )
 
-func sendData(userid string, data []byte, t BufType) error {
-	url := common.Host + "/clip/" + string(t) + "?user_id=" + userid
+func sendData(data []byte, t BufType) error {
+	url := common.Host + "/clip/" + string(t)
 
 	var ct string
 	if t == ImageType {
@@ -29,7 +30,13 @@ func sendData(userid string, data []byte, t BufType) error {
 		ct = "text/plain"
 	}
 
-	res, err := http.Post(url, ct, bytes.NewReader(data))
+	req, err := http.NewRequest("POST", url, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", ct)
+
+	res, err := common.Client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -50,9 +57,9 @@ func WatchText(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	ch := clipboard.Watch(ctx, clipboard.FmtText)
 	for data := range ch {
-		err := sendData(common.UserId, data, TextType)
+		err := sendData(data, TextType)
 		if err != nil {
-			fmt.Println("[error]", err)
+			log.Println("[error]", err)
 			continue
 		}
 
@@ -65,9 +72,9 @@ func WatchImage(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	ch := clipboard.Watch(ctx, clipboard.FmtImage)
 	for data := range ch {
-		err := sendData(common.UserId, data, ImageType)
+		err := sendData(data, ImageType)
 		if err != nil {
-			fmt.Println("[error]", err)
+			log.Println("[error]", err)
 			continue
 		}
 
