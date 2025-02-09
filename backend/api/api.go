@@ -1,12 +1,13 @@
 package api
 
 import (
-	"fmt"
+	"harmony/backend/cache"
 	"harmony/backend/handlers"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -22,7 +23,6 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		claims, err := handlers.VerifyAndDecodeToken(token)
 		if err != nil {
-			log.Println("]] HI 2" + err.Error())
 			c.AbortWithStatusJSON(http.StatusUnauthorized, nil)
 			return
 		}
@@ -67,14 +67,44 @@ func Setup() {
 		c.String(http.StatusOK, "")
 	})
 
-	r.Use(AuthMiddleware()).GET("/test", func(c *gin.Context) {
-		z, _ := c.Get("email")
-		email := z.(string)
-		z, _ = c.Get("user_id")
-		uid := z.(string)
+	r.Use(AuthMiddleware()).GET("/buffer", func(c *gin.Context) {
+		z, exists := c.Get("user_id")
+		if !exists {
+			c.String(http.StatusInternalServerError, "[error] getting user_id")
+			return
+		}
+		user_id := z.(string)
 
-		msg := fmt.Sprintf("You are authorized! Email: %s, User ID: %s", email, uid)
-		c.String(http.StatusOK, msg)
+		t := c.Query("ttl")
+		if t != "" {
+			ts, err := strconv.ParseInt(t, 10, 64)
+			if err != nil {
+				c.String(http.StatusBadRequest, "invalid timestamp")
+				return
+			}
+
+			lts := cache.Get(user_id)
+			if lts <= ts {
+				c.String(http.StatusNotModified, "")
+				return
+			}
+		}
+
+		buf, bt, ttl, err := handlers.GetBuffer(user_id)
+		if err != nil {
+			log.Println("[error]", err)
+			c.String(http.StatusNoContent, "[error] buffer expired")
+			return
+		}
+
+		ct := "text/plain"
+		if bt == handlers.ImageType {
+			ct = "application/octet-stream"
+		}
+
+		cache.Set(user_id, ttl)
+		c.Header("X-Buffer-TTL", strconv.FormatInt(ttl, 10))
+		c.Data(http.StatusOK, ct, buf)
 	})
 
 	r.Use(AuthMiddleware()).POST("/clip/text", func(c *gin.Context) {
@@ -96,12 +126,13 @@ func Setup() {
 			return
 		}
 
-		err = handlers.UpsertBuffer(user_id, data, handlers.TextType)
+		ttl, err := handlers.UpsertBuffer(user_id, data, handlers.TextType)
 		if err != nil {
 			log.Println("[error]", err)
 		}
 
-		c.String(http.StatusOK, "")
+		cache.Set(user_id, ttl)
+		c.Data(http.StatusOK, "text/plain", []byte(strconv.FormatInt(ttl, 10)))
 	})
 
 	r.Use(AuthMiddleware()).POST("/clip/image", func(c *gin.Context) {
@@ -123,12 +154,13 @@ func Setup() {
 			return
 		}
 
-		err = handlers.UpsertBuffer(user_id, buf, handlers.ImageType)
+		ttl, err := handlers.UpsertBuffer(user_id, buf, handlers.ImageType)
 		if err != nil {
 			log.Println("[error]", err)
 		}
 
-		c.String(http.StatusOK, "")
+		cache.Set(user_id, ttl)
+		c.Data(http.StatusOK, "text/plain", []byte(strconv.FormatInt(ttl, 10)))
 	})
 
 	r.Run(":" + os.Getenv("PORT"))

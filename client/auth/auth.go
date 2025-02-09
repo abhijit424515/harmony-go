@@ -106,7 +106,7 @@ func getAccessToken() (string, error) {
 		return "", err
 	}
 
-	clip.CopyToClipboard([]byte(deviceResp.UserCode), clip.TextType)
+	clip.CopyToClipboard(clip.TextType, []byte(deviceResp.UserCode))
 	fmt.Printf("Visit: %s\nEnter this code: %s\n[Code has been copied to clipboard ✅]\n", deviceResp.VerificationURI, deviceResp.UserCode)
 
 	token, err := pollForToken(deviceResp.DeviceCode)
@@ -155,11 +155,10 @@ func GetEmail() (string, error) {
 }
 
 func SignIn() error {
-	// email, err := GetEmail()
-	// if err != nil {
-	// 	return err
-	// }
-	email := "210050002@iitb.ac.in"
+	email, err := GetEmail()
+	if err != nil {
+		return err
+	}
 
 	req, err := http.NewRequest("GET", common.Host+"/user?email="+email, nil)
 	if err != nil {

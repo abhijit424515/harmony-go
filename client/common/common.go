@@ -6,7 +6,9 @@ import (
 )
 
 var (
-	Ctx    context.Context
-	Client *http.Client
-	Host   string
+	Ctx          context.Context
+	Client       *http.Client
+	Host         string
+	LatestTTL    int64
+	LatestBuffer []byte
 )

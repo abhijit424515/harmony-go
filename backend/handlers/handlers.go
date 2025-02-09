@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"harmony/backend/common"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -36,7 +37,7 @@ type Buffer struct {
 	Data   []byte  `dynamodbav:"data"`
 }
 
-func UpsertBuffer(userid string, data []byte, t BufType) error {
+func GetBuffer(userid string) ([]byte, BufType, int64, error) {
 	items, err := common.Dbc.Query(common.Ctx, &dynamodb.QueryInput{
 		TableName:              aws.String("buffer"),
 		IndexName:              aws.String("userid-index"),
@@ -46,7 +47,41 @@ func UpsertBuffer(userid string, data []byte, t BufType) error {
 		},
 	})
 	if err != nil {
-		return err
+		return nil, TextType, 0, err
+	}
+
+	if items.Count == 0 {
+		return nil, TextType, 0, fmt.Errorf("no buffer found")
+	}
+
+	buf := items.Items[0]["data"].(*types.AttributeValueMemberB).Value
+	ttl_ := items.Items[0]["ttl"].(*types.AttributeValueMemberN).Value
+	buf_type := items.Items[0]["type"].(*types.AttributeValueMemberS).Value
+
+	ttl, _ := strconv.ParseInt(ttl_, 10, 64)
+	if time.Now().Unix() > ttl {
+		return nil, TextType, 0, fmt.Errorf("buffer expired")
+	}
+
+	bt := TextType
+	if buf_type == string(ImageType) {
+		bt = ImageType
+	}
+
+	return buf, bt, ttl, nil
+}
+
+func UpsertBuffer(userid string, data []byte, t BufType) (int64, error) {
+	items, err := common.Dbc.Query(common.Ctx, &dynamodb.QueryInput{
+		TableName:              aws.String("buffer"),
+		IndexName:              aws.String("userid-index"),
+		KeyConditionExpression: aws.String("user_id = :user_id"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":user_id": &types.AttributeValueMemberS{Value: userid},
+		},
+	})
+	if err != nil {
+		return 0, err
 	}
 
 	var _id string
@@ -56,7 +91,7 @@ func UpsertBuffer(userid string, data []byte, t BufType) error {
 		_id = uuid.New().String()
 	}
 
-	ttl := time.Now().Add(2 * time.Minute).Unix()
+	ttl := time.Now().Add(common.Lifetime).Unix()
 
 	item, err := attributevalue.MarshalMap(Buffer{
 		Id:     _id,
@@ -67,17 +102,17 @@ func UpsertBuffer(userid string, data []byte, t BufType) error {
 		Data:   data,
 	})
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	_, err = common.Dbc.PutItem(common.Ctx, &dynamodb.PutItemInput{
 		TableName: aws.String("buffer"), Item: item,
 	})
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	return nil
+	return ttl, nil
 }
 
 func CreateOrGetUser(email string) (string, error) {

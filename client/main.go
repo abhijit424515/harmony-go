@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"harmony/client/auth"
 	"harmony/client/clip"
 	"harmony/client/common"
@@ -17,13 +18,9 @@ func setup() error {
 	common.Host = "http://localhost:6553"
 	common.Ctx = context.TODO()
 
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		return err
-	}
-	common.Client = &http.Client{
-		Jar: jar,
-	}
+	jar, _ := cookiejar.New(nil)
+	common.Client = &http.Client{Jar: jar}
+
 	logged_in, err := auth.CreateOrRestoreCookies()
 	if err != nil {
 		return err
@@ -31,13 +28,13 @@ func setup() error {
 
 	err = clipboard.Init()
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("failed to initialize clipboard: %w", err)
 	}
 
 	if !logged_in {
 		err = auth.SignIn()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to sign in: %w", err)
 		}
 	}
 
@@ -47,13 +44,19 @@ func setup() error {
 func main() {
 	err := setup()
 	if err != nil {
-		log.Println("[error]", err)
+		log.Fatal("[error]", err)
 		return
 	}
 
 	go func() {
 		for {
-			err := auth.SaveCookies()
+			err := clip.GetBuffer()
+			if err != nil {
+				log.Println("[error]", err)
+				return
+			}
+
+			err = auth.SaveCookies()
 			if err != nil {
 				log.Println("[error]", err)
 				return
