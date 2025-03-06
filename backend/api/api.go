@@ -52,7 +52,7 @@ func Setup() {
 			return
 		}
 
-		payload := make(map[string]interface{})
+		payload := make(map[string]any)
 		payload["email"] = e
 		payload["user_id"] = uid
 
@@ -67,7 +67,13 @@ func Setup() {
 		c.String(http.StatusOK, "")
 	})
 
-	r.Use(AuthMiddleware()).GET("/buffer", func(c *gin.Context) {
+	r.Use(AuthMiddleware())
+
+	r.GET("/user/check", func(c *gin.Context) {
+		c.String(http.StatusOK, "")
+	})
+
+	r.GET("/buffer", func(c *gin.Context) {
 		z, exists := c.Get("user_id")
 		if !exists {
 			c.String(http.StatusInternalServerError, "[error] getting user_id")

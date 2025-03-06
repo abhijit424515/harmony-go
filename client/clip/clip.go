@@ -15,18 +15,18 @@ import (
 	"golang.design/x/clipboard"
 )
 
-type BufType string
+const MaxBufferSize = 1024 * 1024 * 16 // bytes
 
-const (
-	TextType  BufType = "text"
-	ImageType BufType = "image"
-)
+func sendData(data []byte, t common.BufType) error {
+	if len(data) >= MaxBufferSize {
+		notify.NotifyText("Copied data should be within 16MB.\nPlease try again.")
+		return fmt.Errorf("buffer limit exceeded: %d MB", len(data)/(1024*1024))
+	}
 
-func sendData(data []byte, t BufType) error {
 	url := common.Host + "/clip/" + string(t)
 
 	var ct string
-	if t == ImageType {
+	if t == common.ImageType {
 		ct = "application/octet-stream"
 	} else {
 		ct = "text/plain"
@@ -54,30 +54,30 @@ func sendData(data []byte, t BufType) error {
 	return nil
 }
 
-func CopyToClipboard(t BufType, data []byte) {
-	var x string
-	if t == TextType {
+func CopyToClipboard(t common.BufType, data []byte, ntf bool) {
+	if t == common.TextType {
 		clipboard.Write(clipboard.FmtText, data)
-		x = "[R] Text: " + fmt.Sprintf("%d", len(data)) + " bytes"
+		if ntf {
+			notify.NotifyText("⬇️ " + string(data))
+		}
 	} else {
 		clipboard.Write(clipboard.FmtImage, data)
-		x = "[R] Image: " + fmt.Sprintf("%d", len(data)) + " bytes"
+		if ntf {
+			notify.NotifyImage("⬇️ Image", data)
+		}
 	}
-	notify.Notify(x)
 }
 
 func watchText(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	ch := clipboard.Watch(ctx, clipboard.FmtText)
 	for data := range ch {
-		err := sendData(data, TextType)
+		err := sendData(data, common.TextType)
 		if err != nil {
 			log.Println("[error]", err)
 			continue
 		}
-
-		x := "[S] Text: " + fmt.Sprintf("%d", len(data)) + " bytes"
-		notify.Notify(x)
+		notify.NotifyText("⬆️ " + string(data))
 	}
 }
 
@@ -85,14 +85,12 @@ func watchImage(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	ch := clipboard.Watch(ctx, clipboard.FmtImage)
 	for data := range ch {
-		err := sendData(data, ImageType)
+		err := sendData(data, common.ImageType)
 		if err != nil {
 			log.Println("[error]", err)
 			continue
 		}
-
-		x := "[S] Image: " + fmt.Sprintf("%d", len(data)) + " bytes"
-		notify.Notify(x)
+		notify.NotifyImage("⬆️ Image", data)
 	}
 }
 
@@ -125,9 +123,9 @@ func GetBuffer() error {
 	defer res.Body.Close()
 
 	if res.StatusCode == http.StatusOK {
-		bt := TextType
+		bt := common.TextType
 		if res.Header.Get("Content-Type") == "application/octet-stream" {
-			bt = ImageType
+			bt = common.ImageType
 		}
 
 		data, _ := io.ReadAll(res.Body)
@@ -136,7 +134,7 @@ func GetBuffer() error {
 
 		common.LatestTTL = ttl
 		common.LatestBuffer = data
-		CopyToClipboard(bt, data)
+		CopyToClipboard(bt, data, true)
 
 	} else if res.StatusCode != http.StatusNotModified && res.StatusCode != http.StatusNoContent {
 		buf, _ := io.ReadAll(res.Body)

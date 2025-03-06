@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"maps"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -151,13 +153,11 @@ func CreateOrGetUser(email string) (string, error) {
 	return uid, nil
 }
 
-func GenerateAccessToken(payload map[string]interface{}, expirationTime time.Duration) (string, error) {
+func GenerateAccessToken(payload map[string]any, expirationTime time.Duration) (string, error) {
 	token := jwt.New(jwt.SigningMethodHS256)
 
 	claims := token.Claims.(jwt.MapClaims)
-	for key, value := range payload {
-		claims[key] = value
-	}
+	maps.Copy(claims, payload)
 
 	t := time.Now()
 	claims["exp"] = t.Add(expirationTime).Unix()
@@ -176,8 +176,8 @@ func GenerateAccessToken(payload map[string]interface{}, expirationTime time.Dur
 	return tokenString, nil
 }
 
-func VerifyAndDecodeToken(tokenString string) (map[string]interface{}, error) {
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+func VerifyAndDecodeToken(tokenString string) (map[string]any, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}

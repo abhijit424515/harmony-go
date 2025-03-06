@@ -15,7 +15,7 @@ import (
 )
 
 func setup() error {
-	common.Host = "http://localhost:6553"
+	common.Host = "http://localhost:6554"
 	common.Ctx = context.TODO()
 
 	jar, _ := cookiejar.New(nil)
@@ -36,6 +36,9 @@ func setup() error {
 		if err != nil {
 			return fmt.Errorf("failed to sign in: %w", err)
 		}
+	} else {
+		common.ClearScreen()
+		fmt.Println("You are already signed in!")
 	}
 
 	return nil
@@ -61,6 +64,7 @@ func main() {
 				log.Println("[error]", err)
 				return
 			}
+
 			time.Sleep(5 * time.Second)
 		}
 	}()

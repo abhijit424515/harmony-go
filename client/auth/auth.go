@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"harmony/client/clip"
 	"harmony/client/common"
+	"harmony/client/notify"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
+	"runtime"
 	"slices"
 	"sort"
 	"time"
@@ -36,6 +39,25 @@ type Email struct {
 	Verified   bool   `json:"verified"`
 	Primary    bool   `json:"primary"`
 	Visibility string `json:"visibility"`
+}
+
+func openBrowser(url string) error {
+	var cmd string
+	var args []string
+
+	switch runtime.GOOS {
+	case "windows":
+		cmd = "rundll32"
+		args = []string{"url.dll,FileProtocolHandler", url}
+	case "darwin":
+		cmd = "open"
+		args = []string{url}
+	default: // Linux, Unix-like
+		cmd = "xdg-open"
+		args = []string{url}
+	}
+
+	return exec.Command(cmd, args...).Start()
 }
 
 func requestDeviceCode() (*DeviceAuthResponse, error) {
@@ -79,7 +101,7 @@ func pollForToken(deviceCode string) (string, error) {
 		}
 		defer resp.Body.Close()
 
-		var tokenResp map[string]interface{}
+		var tokenResp map[string]any
 		err = json.NewDecoder(resp.Body).Decode(&tokenResp)
 		if err != nil {
 			return "", err
@@ -106,14 +128,18 @@ func getAccessToken() (string, error) {
 		return "", err
 	}
 
-	clip.CopyToClipboard(clip.TextType, []byte(deviceResp.UserCode))
-	fmt.Printf("Visit: %s\nEnter this code: %s\n[Code has been copied to clipboard ✅]\n", deviceResp.VerificationURI, deviceResp.UserCode)
+	clip.CopyToClipboard(common.TextType, []byte(deviceResp.UserCode), false)
+	notify.NotifyText("Visit: " + deviceResp.VerificationURI + "\nEnter this code: " + deviceResp.UserCode + "\n[Code has been copied to clipboard ✅]")
+	openBrowser(deviceResp.VerificationURI)
 
 	token, err := pollForToken(deviceResp.DeviceCode)
 	if err != nil {
 		log.Fatal("Failed to retrieve access token:", err)
 		return "", err
 	}
+
+	common.ClearScreen()
+	notify.NotifyText("You are now signed in!")
 
 	return token, nil
 }
@@ -174,6 +200,41 @@ func SignIn() error {
 	return nil
 }
 
+func checkSession() (bool, error) {
+	req, err := http.NewRequest("GET", common.Host+"/user/check", nil)
+	if err != nil {
+		return false, err
+	}
+
+	res, err := common.Client.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer res.Body.Close()
+
+	return res.StatusCode == http.StatusOK, nil
+}
+
+func refreshSession() error {
+	email, err := GetEmail()
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("GET", common.Host+"/user?email="+email, nil)
+	if err != nil {
+		return err
+	}
+
+	res, err := common.Client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	return nil
+}
+
 func SaveCookies() error {
 	file, err := os.Create("cookies.json")
 	if err != nil {
@@ -212,6 +273,22 @@ func CreateOrRestoreCookies() (bool, error) {
 	url, _ := url.Parse(common.Host)
 	for _, cookie := range cookies {
 		common.Client.Jar.SetCookies(url, []*http.Cookie{cookie})
+	}
+
+	session, err := checkSession()
+	if err != nil {
+		return false, err
+	}
+
+	if !session {
+		err = refreshSession()
+		if err != nil {
+			return false, err
+		}
+		err = SaveCookies()
+		if err != nil {
+			return false, err
+		}
 	}
 
 	return true, nil
