@@ -2,9 +2,9 @@ package common
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -14,6 +14,6 @@ const (
 
 var (
 	Ctx context.Context
-	Dbc *dynamodb.Client
 	Rdb *redis.Client
+	Db  *sql.DB
 )

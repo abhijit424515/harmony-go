@@ -30,6 +30,9 @@ func main() {
 	checkEnv()
 
 	cache.Setup()
-	db.Setup()
+	err := db.Setup()
+	if err != nil {
+		log.Fatalf("[error] setting up database: %v", err)
+	}
 	api.Setup()
 }

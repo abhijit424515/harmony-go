@@ -9,7 +9,11 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 
 	"golang.design/x/clipboard"
@@ -17,10 +21,41 @@ import (
 
 const MaxBufferSize = 1024 * 1024 * 16 // bytes
 
+func checkFileUrl(data []byte) ([]byte, bool) {
+	filePath := strings.TrimPrefix(string(data), "file://")
+
+	// use regex to check if the file path is valid
+	rgx := regexp.MustCompile(`^/(?:[a-zA-Z0-9._\-\ \(\)\[\]]+/)*[a-zA-Z0-9._\-\ \(\)\[\]]*$`)
+	if !rgx.MatchString(filePath) {
+		return data, false
+	}
+
+	// Check if file exists
+	_, err := os.Stat(filePath)
+	if err != nil {
+		log.Println("[error]", err)
+		return data, false
+	}
+
+	// Read the file into a buffer
+	fileData, err := os.ReadFile(filePath)
+	if err != nil {
+		notify.NotifyText(fmt.Sprintf("🚫 Failed to read file: %s", err))
+		return data, false
+	}
+
+	// checking the file type
+	extension := filepath.Ext(filePath)
+	if extension == ".png" || extension == ".jpg" || extension == ".jpeg" || extension == ".gif" {
+		return fileData, true
+	}
+	return data, false
+}
+
 func sendData(data []byte, t common.BufType) error {
 	if len(data) >= MaxBufferSize {
-		notify.NotifyText("Copied data should be within 16MB.\nPlease try again.")
-		return fmt.Errorf("buffer limit exceeded: %d MB", len(data)/(1024*1024))
+		notify.NotifyText("🚫 Copied data should be within 300KB.\nPlease try again.")
+		return fmt.Errorf("buffer limit exceeded: %d bytes", len(data))
 	}
 
 	url := common.Host + "/clip/" + string(t)
@@ -72,12 +107,23 @@ func watchText(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	ch := clipboard.Watch(ctx, clipboard.FmtText)
 	for data := range ch {
-		err := sendData(data, common.TextType)
-		if err != nil {
-			log.Println("[error]", err)
-			continue
+		data, isFile := checkFileUrl(data)
+		if isFile {
+			err := sendData(data, common.ImageType)
+			if err != nil {
+				log.Println("[error]", err)
+				continue
+			}
+			notify.NotifyImage("⬆️ Image", data)
+		} else {
+			err := sendData(data, common.TextType)
+			if err != nil {
+				log.Println("[error]", err)
+				continue
+			}
+			notify.NotifyText("⬆️ " + string(data))
 		}
-		notify.NotifyText("⬆️ " + string(data))
+
 	}
 }
 

@@ -3,8 +3,8 @@ package api
 import (
 	"harmony/backend/cache"
 	"harmony/backend/handlers"
+	"harmony/backend/utils"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -21,7 +21,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		claims, err := handlers.VerifyAndDecodeToken(token)
+		claims, err := utils.VerifyAndDecodeToken(token)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, nil)
 			return
@@ -47,7 +47,6 @@ func Setup() {
 		e := c.Query("email")
 		uid, err := handlers.CreateOrGetUser(e)
 		if err != nil {
-			log.Println("[error]", err)
 			c.String(http.StatusInternalServerError, "[error] creating user")
 			return
 		}
@@ -56,9 +55,8 @@ func Setup() {
 		payload["email"] = e
 		payload["user_id"] = uid
 
-		token, err := handlers.GenerateAccessToken(payload, time.Hour*24)
+		token, err := utils.GenerateAccessToken(payload, time.Hour*24)
 		if err != nil {
-			log.Println("[error]", err)
 			c.String(http.StatusInternalServerError, "[error] generating token")
 			return
 		}
@@ -98,7 +96,6 @@ func Setup() {
 
 		buf, bt, ttl, err := handlers.GetBuffer(user_id)
 		if err != nil {
-			log.Println("[error]", err)
 			c.String(http.StatusNoContent, "[error] buffer expired")
 			return
 		}
@@ -134,7 +131,8 @@ func Setup() {
 
 		ttl, err := handlers.UpsertBuffer(user_id, data, handlers.TextType)
 		if err != nil {
-			log.Println("[error]", err)
+			c.String(http.StatusInternalServerError, "[error] upserting buffer")
+			return
 		}
 
 		cache.Set(user_id, ttl)
@@ -162,7 +160,8 @@ func Setup() {
 
 		ttl, err := handlers.UpsertBuffer(user_id, buf, handlers.ImageType)
 		if err != nil {
-			log.Println("[error]", err)
+			c.String(http.StatusInternalServerError, "[error] upserting buffer")
+			return
 		}
 
 		cache.Set(user_id, ttl)
